@@ -1,7 +1,7 @@
 import math
 
 class Sim:
-    def __init__(self, posX: float, posY: float, deltaT: float, mass: float, muK: float):
+    def __init__(self, posX: float, posY: float, deltaT: float, mass: float, muK: float, length: float):
         self.posX = posX
         self.posY = posY
         self.v = 0.0
@@ -9,6 +9,7 @@ class Sim:
         self.wheelTheta = 0.0
         self.deltaT = deltaT
         self.muK = muK
+        self.length = length
 
     def step(self, F: float, theta: float):
 
