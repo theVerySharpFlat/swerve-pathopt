@@ -1,0 +1,17 @@
+{
+    timeStep: 0.0166666666,
+    steps: [
+        {
+            step: 0,
+            force: 100,
+        },
+        {
+            step: 60,
+            force: -100,
+        },
+        {
+            step: 120,
+            force: 0,
+        }
+    ]
+}

@@ -16,7 +16,7 @@ class Sim:
         self.v = self.v * math.cos(theta - self.wheelTheta)
         self.wheelTheta = theta
 
-        Ff = -abs(self.v) / self.v * self.muK * 9.81 * self.mass # very simplistic model for friction, might need to change, IDK
+        Ff = -abs(self.v) / (1.0 if self.v == 0.0 else self.v) * self.muK * 9.81 * self.mass # very simplistic model for friction, might need to change, IDK
 
         a = ((F + Ff)/ self.mass)
         D = self.v * self.deltaT + 0.5 * a * (self.deltaT ** 2)
