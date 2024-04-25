@@ -2,31 +2,34 @@ from sim import Sim
 import pygame, sys, random
 from pygame.locals import *
 import numpy
-import imgui
-import imgui.integrations.pygame
+import json
+import math
+import csv
 
-import OpenGL.GL as GL
+pathInfo = None
+with open("path.json", "r") as pathJSON:
+    pathInfo = json.loads(pathJSON.read())
 
-initialPos = [0.0, 0.0]
-timeStep = 1.0 / 60.0  # in seconds
-mass = 45.3592  # kg
-length = 0.4572  # m
+path = pathInfo["path"]
+robotInfo = pathInfo["robot"]
+fieldInfo = pathInfo["field"]
 
-#           GR     torque  #motors    radius
-maxForce = (6.12 * 1.068 * 4      ) / 0.1016
+initialPos = path["start"]
+timeStep = path["timeStep"]  # in seconds
+mass = robotInfo["mass"]  # kg
+length = robotInfo["sideLength"]  # m
+maxForce = robotInfo["maxForce"]
+muK = robotInfo["muK"]
 
-sim = Sim(
-    posX=initialPos[0],
-    posY=initialPos[1],
-    deltaT=timeStep,
-    mass=mass,
-    muK=0.0,
-    length=length,
-)
+fieldWidth = fieldInfo["width"]
+fieldHeight = fieldInfo["height"]
+
+# TODO: max velocity
+
 pygame.init()
 
 # Background color (R, G, B)
-BACKGROUND = (1.0, 1.0, 1.0)
+BACKGROUND = (255, 255, 255)
 
 # Game Setup
 FPS = 60
@@ -34,8 +37,18 @@ fpsClock = pygame.time.Clock()
 WINDOW_WIDTH = 900
 WINDOW_HEIGHT = 600
 
-WINDOW = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.DOUBLEBUF | pygame.OPENGL)
+WINDOW = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
 pygame.display.set_caption("Swerve Pathopt GUI!")
+
+sim = Sim(
+    posX=initialPos[0],
+    posY=initialPos[1],
+    deltaT=timeStep,
+    mass=mass,
+    muK=muK,
+    length=length,
+    WINDOW=WINDOW,
+)
 
 cameraZoomBounds = (0.1, 10)
 cameraZoom = 1.0
@@ -43,15 +56,37 @@ cameraZoomRate = 0.05
 cameraPosition = [0, 0]
 
 
+def getFieldToWindowDimensions(
+    fieldDimensions: tuple[float, float]
+) -> tuple[float, float]:
+    if (fieldDimensions[0] / fieldDimensions[1]) > (WINDOW_WIDTH / WINDOW_HEIGHT):
+        return (WINDOW_WIDTH, WINDOW_WIDTH * (fieldDimensions[1] / fieldDimensions[0]))
+    else:
+        return (
+            WINDOW_HEIGHT * (fieldDimensions[0] / fieldDimensions[1]),
+            WINDOW_HEIGHT,
+        )
+
+
 def toScreenCoord(coord):
-    return numpy.add(
-        numpy.multiply(numpy.subtract(coord, cameraPosition), cameraZoom),
-        (WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2),
-    )
+    fieldScreenDims = getFieldToWindowDimensions((fieldWidth, fieldHeight))
+    conv = numpy.divide(fieldScreenDims, (fieldWidth, fieldHeight))
+
+    return numpy.round(numpy.add(
+        (
+            numpy.multiply(
+                numpy.subtract(numpy.multiply(coord, conv), cameraPosition), cameraZoom
+            )
+        ),
+        (0 * WINDOW_WIDTH / 2, 0 * WINDOW_HEIGHT / 2),
+    ))
 
 
 def irlToScreen(coord):
-    return numpy.multiply(coord, 71)
+    fieldScreenDims = getFieldToWindowDimensions((fieldWidth, fieldHeight))
+    conv = numpy.divide(fieldScreenDims, (fieldWidth, fieldHeight))
+
+    return numpy.round(numpy.multiply(coord, conv))
 
 
 def drawGrid(gapX: float, gapY: float):
@@ -137,11 +172,23 @@ def main():
     global cameraZoom
     mouseDraggedPos = None
 
-    imgui.create_context()
-    pygameImguiRenderer = imgui.integrations.pygame.PygameRenderer()
-    imgui.get_io().display_size = WINDOW_WIDTH, WINDOW_HEIGHT
-    imgui.get_io().fonts.add_font_default()
+    # imgui.create_context()
+    # pygameImguiRenderer = imgui.integrations.pygame.PygameRenderer()
+    # imgui.get_io().display_size = WINDOW_WIDTH, WINDOW_HEIGHT
+    # imgui.get_io().fonts.add_font_default()
 
+    segments: list[list[tuple[float, float]]] = [[toScreenCoord((sim.posX, sim.posY))]]
+
+    grid = []
+    with open(fieldInfo["gridCSV"]) as file:
+        reader = csv.reader(file, delimiter=" ")
+
+        for row in reader:
+            grid.append(row)
+    # print(grid)
+
+    tick = 0
+    stepIndex = 0
 
     # The main game loop
     while True:
@@ -162,14 +209,14 @@ def main():
                     cameraZoomBounds[0],
                     cameraZoomBounds[1],
                 )
-            pygameImguiRenderer.process_event(event)
-
-        pygameImguiRenderer.process_inputs()
+        #     pygameImguiRenderer.process_event(event)
+        #
+        # pygameImguiRenderer.process_inputs()
 
         # Render (Draw) elements of the game
-        # WINDOW.fill(BACKGROUND)
-        GL.glClearColor(BACKGROUND[0], BACKGROUND[1], BACKGROUND[2], 1.0)
-        GL.glClear(GL.GL_COLOR_BUFFER_BIT)
+        WINDOW.fill(BACKGROUND)
+        # GL.glClearColor(BACKGROUND[0], BACKGROUND[1], BACKGROUND[2], 1.0)
+        # GL.glClear(GL.GL_COLOR_BUFFER_BIT)
 
         # Handle mouse dragging
         if mouseDraggedPos != None:
@@ -180,40 +227,89 @@ def main():
             print(f"Camera Pos: {cameraPosition}")
 
         # drawGrid(450, 300)
+        for i, row in enumerate(grid):
+            for j, item in enumerate(row):
+                if int(item) != 0:
+                    pygame.draw.rect(
+                        WINDOW,
+                        (255, 0, 0),
+                        (
+                            toScreenCoord(
+                                (
+                                    j * fieldWidth / len(row),
+                                    i * fieldHeight / len(grid),
+                                )
+                            ),
+                            irlToScreen(
+                                (
+                                    fieldWidth / len(row),
+                                    fieldHeight / len(grid),
+                                )
+                            ),
+                        ),
+                    )
 
-        # Draw a rectangle!
+        # Draw field rectangle
+        pygame.draw.rect(
+            WINDOW,
+            (100, 0, 0),
+            (toScreenCoord((0, 0)), irlToScreen((fieldWidth, fieldHeight))),
+            width=2,
+        )
+
         pygame.draw.rect(
             WINDOW,
             (0, 0, 0),
-            (toScreenCoord((0, 0)), (20 * cameraZoom, 20 * cameraZoom)),
-        )
-        pygame.draw.rect(
-            WINDOW,
-            (255, 0, 0),
-            ((-5 + WINDOW_WIDTH / 2, -5 + WINDOW_HEIGHT / 2), (10, 10)),
-        )
-
-        pygame.draw.rect(
-            WINDOW,
-            (0, 255, 0),
             (
-                toScreenCoord(irlToScreen((sim.posX, sim.posY))),
+                toScreenCoord(
+                    (sim.posX - sim.length / 2.0, sim.posY - sim.length / 2.0)
+                ),
                 irlToScreen((sim.length, sim.length)),
             ),
         )
-        sim.step(maxForce, 0.0)
-        print((sim.posX, sim.posY))
 
-        imgui.new_frame()
+        if stepIndex < len(path["steps"]):
+
+            if (
+                stepIndex <= (len(path["steps"]) - 2)
+                and tick == path["steps"][stepIndex + 1]["tick"]
+            ):
+                segments.append([toScreenCoord((sim.posX, sim.posY))])
+                stepIndex += 1
+
+            # print((path["steps"][stepIndex]["force"], math.radians(path["steps"][stepIndex]["theta"])))
+            sim.step(
+                path["steps"][stepIndex]["force"],
+                math.radians(path["steps"][stepIndex]["theta"]),
+                grid,
+                fieldWidth,
+                fieldHeight
+            )
+
+        segments[-1].append(toScreenCoord((sim.posX, sim.posY)))
+
+        for i, segment in enumerate(segments):
+            color = (255, 0, 0)
+            if i % 3 == 1:
+                color = (0, 255, 0)
+            elif i % 3 == 2:
+                color = (0, 0, 255)
+            if len(segment) > 2:
+                pygame.draw.lines(WINDOW, color, False, segment)
+            elif len(segment) == 2:
+                pygame.draw.line(WINDOW, color, segment[0], segment[1])
+
+
+        # imgui.new_frame()
 
         # imgui.show_test_window()
 
-        imgui.begin("Window")
-        imgui.text("Hello, world!")
-        imgui.end()
+        # imgui.begin("Window")
+        # imgui.text("Hello, world!")
+        # imgui.end()
         # imgui.end_frame()
 
-        imgui.render()
+        # imgui.render()
 
         # pygameImguiRenderer.render(imgui.get_draw_data())
 
@@ -222,7 +318,9 @@ def main():
         pygame.display.flip()
 
         # Update the clock limit framerate to FPS
+        tick += 1
         fpsClock.tick(FPS)
 
 
-main()
+if __name__ == "__main__":
+   main() 
