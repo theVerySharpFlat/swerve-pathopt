@@ -27,12 +27,16 @@ muK = robotInfo["muK"]
 fieldWidth = fieldInfo["width"]
 fieldHeight = fieldInfo["height"]
 
+taskInfo = pathInfo["task"]
+taskStart = taskInfo["start"]
+taskEnd = taskInfo["end"]
+
 # TODO: max velocity
 
 pygame.init()
 
 # Background color (R, G, B)
-BACKGROUND = (100, 100, 100)
+BACKGROUND = (255, 255, 255)
 
 # Game Setup
 FPS = 60
@@ -41,17 +45,17 @@ WINDOW_WIDTH = 900
 WINDOW_HEIGHT = 450
 
 WINDOW = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-pygame.display.set_caption("Swerve Pathopt GUI!")
+pygame.display.set_caption("Swerve Pathopt Solver GUI!")
 
-sim = Sim(
-    posX=initialPos[0],
-    posY=initialPos[1],
-    deltaT=timeStep,
-    mass=mass,
-    muK=muK,
-    length=length,
-    WINDOW=WINDOW,
-)
+# sim = Sim(
+#     posX=initialPos[0],
+#     posY=initialPos[1],
+#     deltaT=timeStep,
+#     mass=mass,
+#     muK=muK,
+#     length=length,
+#     WINDOW=WINDOW,
+# )
 
 # cameraZoomBounds = (0.1, 10)
 # cameraZoom = 1.0
@@ -65,12 +69,10 @@ def getFieldToWindowDimensions(
     if (fieldDimensions[0] / fieldDimensions[1]) > (WINDOW_WIDTH / WINDOW_HEIGHT):
         return (WINDOW_WIDTH, WINDOW_WIDTH * (fieldDimensions[1] / fieldDimensions[0]))
     else:
-        return numpy.round(
-            (
-                WINDOW_HEIGHT * (fieldDimensions[0] / fieldDimensions[1]),
-                WINDOW_HEIGHT,
-            )
-        )
+        return numpy.round((
+            WINDOW_HEIGHT * (fieldDimensions[0] / fieldDimensions[1]),
+            WINDOW_HEIGHT,
+        ))
 
 
 def toScreenCoord(coord):
@@ -85,12 +87,14 @@ def toScreenCoord(coord):
     #     ),
     #     (0 * WINDOW_WIDTH / 2, 0 * WINDOW_HEIGHT / 2),
     # ))
-    return numpy.ceil(
-        numpy.add(
-            (numpy.multiply(numpy.subtract(numpy.multiply(coord, conv), 0.0), 1.0)),
-            (0 * WINDOW_WIDTH / 2, 0 * WINDOW_HEIGHT / 2),
-        )
-    )
+    return numpy.ceil(numpy.add(
+        (
+            numpy.multiply(
+                numpy.subtract(numpy.multiply(coord, conv), 0.0), 1.0
+            )
+        ),
+        (0 * WINDOW_WIDTH / 2, 0 * WINDOW_HEIGHT / 2),
+    ))
 
 
 def irlToScreen(coord):
@@ -188,13 +192,13 @@ def main():
     # imgui.get_io().display_size = WINDOW_WIDTH, WINDOW_HEIGHT
     # imgui.get_io().fonts.add_font_default()
 
-    segments: list[list[tuple[float, float]]] = [[toScreenCoord((sim.posX, sim.posY))]]
+    # segments: list[list[tuple[float, float]]] = [[toScreenCoord((sim.posX, sim.posY))]]
 
     gridImage = imageio.v2.imread(fieldInfo["gridImage"])
     print(gridImage.shape[0:2])
 
     grid = numpy.zeros(shape=gridImage.shape[0:2], dtype=bool)
-    it = numpy.nditer(grid, flags=["multi_index"])
+    it = numpy.nditer(grid, flags=['multi_index'])
     for x in it:
         (i, j) = it.multi_index
         grid[i][j] = gridImage[i][j][3]
@@ -271,47 +275,48 @@ def main():
         #     width=2,
         # )
         #
-        pygame.draw.rect(
-            WINDOW,
-            (0, 0, 0),
-            (
-                toScreenCoord(
-                    (sim.posX - sim.length / 2.0, sim.posY - sim.length / 2.0)
-                ),
-                irlToScreen((sim.length, sim.length)),
-            ),
-        )
+        # pygame.draw.rect(
+        #     WINDOW,
+        #     (0, 0, 0),
+        #     (
+        #         toScreenCoord(
+        #             (sim.posX - sim.length / 2.0, sim.posY - sim.length / 2.0)
+        #         ),
+        #         irlToScreen((sim.length, sim.length)),
+        #     ),
+        # )
 
-        if stepIndex < len(path["steps"]):
+        # if stepIndex < len(path["steps"]):
+        #
+        #     if (
+        #         stepIndex <= (len(path["steps"]) - 2)
+        #         and tick == path["steps"][stepIndex + 1]["tick"]
+        #     ):
+        #         segments.append([toScreenCoord((sim.posX, sim.posY))])
+        #         stepIndex += 1
+        #
+        #     # print((path["steps"][stepIndex]["force"], math.radians(path["steps"][stepIndex]["theta"])))
+        #     sim.step(
+        #         path["steps"][stepIndex]["force"],
+        #         math.radians(path["steps"][stepIndex]["theta"]),
+        #         grid,
+        #         fieldWidth,
+        #         fieldHeight
+        #     )
 
-            if (
-                stepIndex <= (len(path["steps"]) - 2)
-                and tick == path["steps"][stepIndex + 1]["tick"]
-            ):
-                segments.append([toScreenCoord((sim.posX, sim.posY))])
-                stepIndex += 1
+        # segments[-1].append(toScreenCoord((sim.posX, sim.posY)))
+        #
+        # for i, segment in enumerate(segments):
+        #     color = (255, 0, 0)
+        #     if i % 3 == 1:
+        #         color = (0, 255, 0)
+        #     elif i % 3 == 2:
+        #         color = (0, 0, 255)
+        #     if len(segment) > 2:
+        #         pygame.draw.lines(WINDOW, color, False, segment)
+        #     elif len(segment) == 2:
+        #         pygame.draw.line(WINDOW, color, segment[0], segment[1])
 
-            # print((path["steps"][stepIndex]["force"], math.radians(path["steps"][stepIndex]["theta"])))
-            sim.step(
-                path["steps"][stepIndex]["force"],
-                math.radians(path["steps"][stepIndex]["theta"]),
-                grid,
-                fieldWidth,
-                fieldHeight,
-            )
-
-        segments[-1].append(toScreenCoord((sim.posX, sim.posY)))
-
-        for i, segment in enumerate(segments):
-            color = (255, 0, 0)
-            if i % 3 == 1:
-                color = (0, 255, 0)
-            elif i % 3 == 2:
-                color = (0, 0, 255)
-            if len(segment) > 2:
-                pygame.draw.lines(WINDOW, color, False, segment)
-            elif len(segment) == 2:
-                pygame.draw.line(WINDOW, color, segment[0], segment[1])
 
         # imgui.new_frame()
 
@@ -336,4 +341,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+   main() 

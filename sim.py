@@ -133,21 +133,23 @@ class Sim:
 
         print(f"leftSol: {leftSol}")
 
-
         # solutions must move the robot in the opposite direction of velocity
         filteredSolutions = []
         for sol in solutions:
             vx = self.v * math.cos(self.wheelTheta)
             vy = self.v * math.sin(self.wheelTheta)
-            if numpy.sign(vx) == -numpy.sign(sol[0]) and numpy.sign(vy) == -numpy.sign(sol[1]):
+            if numpy.sign(vx) == -numpy.sign(sol[0]) and numpy.sign(vy) == -numpy.sign(
+                sol[1]
+            ):
                 filteredSolutions.append(sol)
-
 
         # print(f"filteredSolutions: {filteredSolutions}")
 
         validSolutions = []
         for solution in filteredSolutions:
-            resultingRect = numpy.add(self.toRect(), ((solution[0], solution[1]), (0, 0)))
+            resultingRect = numpy.add(
+                self.toRect(), ((solution[0], solution[1]), (0, 0))
+            )
             resultingRectCenter = (
                 resultingRect[0][0] + resultingRect[1][0] / 2.0,
                 resultingRect[0][1] + resultingRect[1][1] / 2.0,
@@ -164,7 +166,7 @@ class Sim:
                 print(f"wheelTheta: {math.degrees(self.wheelTheta)}")
                 print(f"resultingRect: {resultingRect}")
                 print(f"rect: {rect}")
-                sys.exit(0) 
+                sys.exit(0)
 
             # print(f"distance: {distance}")
             # print(f"self.length: {self.length}")
@@ -238,7 +240,6 @@ class Sim:
                         continue
 
                     velMult = numpy.multiply(velMult, mult)
-
 
         # vx = self.v * numpy.cos(self.wheelTheta) * velMult[0]
         # vy = self.v * numpy.sin(self.wheelTheta) * velMult[1]
