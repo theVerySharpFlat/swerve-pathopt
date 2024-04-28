@@ -2,3 +2,4 @@ pygame==2.5.2
 imgui[full]==2.0.0
 numpy>=1.26
 imageio
+heapdict

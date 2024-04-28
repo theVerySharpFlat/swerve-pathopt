@@ -4,10 +4,13 @@ from sim import Sim
 import pygame, sys, random
 from pygame.locals import *
 import numpy
+import numpy as np
 import json
 import math
 import csv
 import imageio
+
+from solver import GridInfo, Solver
 
 pathInfo = None
 with open("path.json", "r") as pathJSON:
@@ -41,8 +44,19 @@ BACKGROUND = (255, 255, 255)
 # Game Setup
 FPS = 60
 fpsClock = pygame.time.Clock()
-WINDOW_WIDTH = 900
-WINDOW_HEIGHT = 450
+WINDOW_WIDTH = 1800
+WINDOW_HEIGHT = 900
+
+gridImage = imageio.v2.imread(fieldInfo["gridImage"])
+print(gridImage.shape[0:2])
+
+grid = numpy.zeros(shape=gridImage.shape[0:2], dtype=bool)
+it = numpy.nditer(grid, flags=["multi_index"])
+for x in it:
+    (i, j) = it.multi_index
+    grid[i][j] = gridImage[i][j][3]
+
+solver = Solver(fieldWidth, fieldHeight, grid, taskStart, taskEnd)
 
 WINDOW = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
 pygame.display.set_caption("Swerve Pathopt Solver GUI!")
@@ -69,10 +83,24 @@ def getFieldToWindowDimensions(
     if (fieldDimensions[0] / fieldDimensions[1]) > (WINDOW_WIDTH / WINDOW_HEIGHT):
         return (WINDOW_WIDTH, WINDOW_WIDTH * (fieldDimensions[1] / fieldDimensions[0]))
     else:
-        return numpy.round((
-            WINDOW_HEIGHT * (fieldDimensions[0] / fieldDimensions[1]),
-            WINDOW_HEIGHT,
-        ))
+        return numpy.round(
+            (
+                WINDOW_HEIGHT * (fieldDimensions[0] / fieldDimensions[1]),
+                WINDOW_HEIGHT,
+            )
+        )
+
+
+def drawArrow(length: float, pos: tuple[float, float], direction: np.ndarray):
+    vec = np.array(direction[0:2])
+    if np.linalg.norm(vec) == 0.0:
+        vec = np.array((0.0, 0.0))
+    else:
+        vec = vec / np.linalg.norm(vec) * length
+    startPos = irlToScreen(pos)[0:2].astype(int).tolist()
+    endPos = (irlToScreen(np.add(pos, vec))).astype(int).tolist()
+    pygame.draw.line(WINDOW, (0, 0, 0), startPos, endPos)
+    pygame.draw.rect(WINDOW, (0, 255, 0), ((startPos[0] - 1, startPos[1] - 1), (2, 2)))
 
 
 def toScreenCoord(coord):
@@ -87,14 +115,12 @@ def toScreenCoord(coord):
     #     ),
     #     (0 * WINDOW_WIDTH / 2, 0 * WINDOW_HEIGHT / 2),
     # ))
-    return numpy.ceil(numpy.add(
-        (
-            numpy.multiply(
-                numpy.subtract(numpy.multiply(coord, conv), 0.0), 1.0
-            )
-        ),
-        (0 * WINDOW_WIDTH / 2, 0 * WINDOW_HEIGHT / 2),
-    ))
+    return numpy.ceil(
+        numpy.add(
+            (numpy.multiply(numpy.subtract(numpy.multiply(coord, conv), 0.0), 1.0)),
+            (0 * WINDOW_WIDTH / 2, 0 * WINDOW_HEIGHT / 2),
+        )
+    )
 
 
 def irlToScreen(coord):
@@ -194,15 +220,6 @@ def main():
 
     # segments: list[list[tuple[float, float]]] = [[toScreenCoord((sim.posX, sim.posY))]]
 
-    gridImage = imageio.v2.imread(fieldInfo["gridImage"])
-    print(gridImage.shape[0:2])
-
-    grid = numpy.zeros(shape=gridImage.shape[0:2], dtype=bool)
-    it = numpy.nditer(grid, flags=['multi_index'])
-    for x in it:
-        (i, j) = it.multi_index
-        grid[i][j] = gridImage[i][j][3]
-
     tick = 0
     stepIndex = 0
 
@@ -267,6 +284,17 @@ def main():
                         ),
                     )
 
+        for r in range(0, solver.dataGrid.shape[0], 2):
+            for c in range(0, solver.dataGrid.shape[1], 2):
+                gridItem: GridInfo = solver.dataGrid[r][c]
+
+                drawArrow(0.3, gridItem.position, gridItem.optimalDirection)
+
+        for neighborless in solver.neighborless:
+            pygame.draw.rect(
+                WINDOW, (0, 0, 255), (irlToScreen(neighborless.position), (3, 3))
+            )
+
         # # Draw field rectangle
         # pygame.draw.rect(
         #     WINDOW,
@@ -317,7 +345,6 @@ def main():
         #     elif len(segment) == 2:
         #         pygame.draw.line(WINDOW, color, segment[0], segment[1])
 
-
         # imgui.new_frame()
 
         # imgui.show_test_window()
@@ -341,4 +368,4 @@ def main():
 
 
 if __name__ == "__main__":
-   main() 
+    main()
