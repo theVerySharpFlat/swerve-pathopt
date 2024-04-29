@@ -500,4 +500,16 @@ class Solver:
             keras.layers.Dense(L, input_shape=(4,), activation=tf.nn.sigmoid),
             keras.layers.Dense(2),
         ])
+
+        targetActor = keras.Sequential([
+            keras.layers.Dense(L, input_shape=(4,), activation=tf.nn.sigmoid),
+            keras.layers.Dense(2),
+        ])
+
+        # input (sx, sy, vx, vy)
+        # output (-deltaX, -deltaY)
+        targetCritic = keras.Sequential([
+            keras.layers.Dense(L, input_shape=(4,), activation=tf.nn.sigmoid),
+            keras.layers.Dense(2),
+        ])
         pass
