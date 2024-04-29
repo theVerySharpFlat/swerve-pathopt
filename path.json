@@ -1,7 +1,7 @@
 {
     "robot": {
         "mass": 45.3592,
-        "sideLength": 0.4572,
+        "sideLength": 0.1,
         "maxForce": 257.32913385826777,
         "maxVelocity": 54.3037,
         "muK": 0.08
@@ -9,10 +9,10 @@
     "field": {
         "height": 8,
         "width": 16,
-        "gridImage": "RobotGrid.png"
+        "gridImage": "FunnyGrid.png"
     },
     "task": {
-        "start": [2, 2],
+        "start": [8, 2],
         "end": [12, 5]
     },
     "path": {

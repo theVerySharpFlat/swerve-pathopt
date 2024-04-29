@@ -293,7 +293,17 @@ def main():
         for neighborless in solver.neighborless:
             pygame.draw.rect(
                 WINDOW, (0, 0, 255), (irlToScreen(neighborless.position), (3, 3))
+
             )
+
+        waypoints = solver.naivePath((
+            solver.GRID_WIDTH * 59,
+            solver.GRID_HEIGHT * 13 
+        ))
+        
+        screenWaypoints = [irlToScreen(waypoint).tolist() for waypoint in waypoints]
+
+        pygame.draw.lines(WINDOW, (0, 0, 255), False, screenWaypoints, width=2)
 
         # # Draw field rectangle
         # pygame.draw.rect(

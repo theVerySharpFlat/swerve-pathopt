@@ -3,3 +3,4 @@ imgui[full]==2.0.0
 numpy>=1.26
 imageio
 heapdict
+tqdm

@@ -4,28 +4,21 @@ import numpy
 import pygame
 
 
-def collideRect(
+def collidePointRect(
     r1: tuple[tuple[float, float], tuple[float, float]],
-    r2: tuple[tuple[float, float], tuple[float, float]],
+    p: tuple[float, float],
+    inclusive: bool = True
 ):
     r1x = round(r1[0][0], 8)
     r1y = round(r1[0][1], 8)
     r1w = round(r1[1][0], 8)
     r1h = round(r1[1][1], 8)
 
-    r2x = round(r2[0][0], 8)
-    r2y = round(r2[0][1], 8)
-    r2w = round(r2[1][0], 8)
-    r2h = round(r2[1][1], 8)
+    if inclusive:
+        return p[0] >= r1x and p[0] <= r1x + r1w and p[1] >= r1y and p[1] <= r1y + r1h
+    else:
+        return p[0] > r1x and p[0] < r1x + r1w and p[1] > r1y and p[1] < r1y + r1h
 
-    if (
-        (r1x + r1w > r2x)
-        and (r1x < r2x + r2w)
-        and (r1y + r1h > r2y)
-        and (r1y < r2y + r2h)
-    ):
-        return True
-    return False
 
 
 class Sim:
@@ -91,7 +84,7 @@ class Sim:
         self, rect: tuple[tuple[float, float], tuple[float, float]]
     ) -> tuple[float, float] | None:
         """returns the recommended velocity solution"""
-        if not collideRect(self.toRect(), rect):
+        if not collidePointRect(rect, (self.posX, self.posY), inclusive=False):
             # print(no collide!")
             return
 
@@ -100,10 +93,8 @@ class Sim:
         rectLeft = rect[0][0]
         rectRight = rect[0][0] + rect[1][0]
 
-        selfTop = self.posY - self.length / 2.0
-        selfLeft = self.posX - self.length / 2.0
-        selfBottom = self.posY + self.length / 2.0
-        selfRight = self.posX + self.length / 2.0
+        selfTop = selfBottom = self.posY
+        selfLeft = selfRight = self.posX
 
         bottomSol = (
             ((rectBottom) - selfTop) / (numpy.tan(self.wheelTheta)),
@@ -130,76 +121,69 @@ class Sim:
         )
 
         solutions = [bottomSol, topSol, leftSol, rightSol]
-
-        print(f"leftSol: {leftSol}")
-
-        # solutions must move the robot in the opposite direction of velocity
+        #
+        # print(f"leftSol: {leftSol}")
+        #
+        # # solutions must move the robot in the opposite direction of velocity
         filteredSolutions = []
         for sol in solutions:
             vx = self.v * math.cos(self.wheelTheta)
             vy = self.v * math.sin(self.wheelTheta)
             if numpy.sign(vx) == -numpy.sign(sol[0]) and numpy.sign(vy) == -numpy.sign(
                 sol[1]
-            ):
+            ) and collidePointRect(rect, numpy.add((self.posX, self.posY), sol[0:2]).tolist()):
                 filteredSolutions.append(sol)
-
-        # print(f"filteredSolutions: {filteredSolutions}")
-
-        validSolutions = []
-        for solution in filteredSolutions:
-            resultingRect = numpy.add(
-                self.toRect(), ((solution[0], solution[1]), (0, 0))
-            )
-            resultingRectCenter = (
-                resultingRect[0][0] + resultingRect[1][0] / 2.0,
-                resultingRect[0][1] + resultingRect[1][1] / 2.0,
-            )
-
-            rectCenter = (rect[0][0] + rect[1][0] / 2.0, rect[0][1] + rect[1][1] / 2.0)
-
-            distance = numpy.abs(numpy.subtract(resultingRectCenter, rectCenter))
-
-            if collideRect(resultingRect, rect):
-                print("Warning: one collision solution collides with the collider!")
-                print(f"solution: {solution}")
-                print(f"position: {self.toRect()}")
-                print(f"wheelTheta: {math.degrees(self.wheelTheta)}")
-                print(f"resultingRect: {resultingRect}")
-                print(f"rect: {rect}")
-                sys.exit(0)
-
-            # print(f"distance: {distance}")
-            # print(f"self.length: {self.length}")
-
-            if (
-                round(distance[0], 8) == round((self.length + rect[1][0]) / 2.0, 8)
-                and round(distance[1], 8) <= round((self.length + rect[1][1]) / 2.0, 3)
-            ) or (
-                round(distance[1], 8) == round((self.length + rect[1][1]) / 2.0, 8)
-                and round(distance[0], 8) <= round((self.length + rect[1][0]) / 2.0, 3)
-            ):
-                print(f"solution: {solution}")
-                print(f"position: {self.toRect()}")
-                print(f"wheelTheta: {math.degrees(self.wheelTheta)}")
-                print(f"resultingRect: {resultingRect}")
-                print(f"rect: {rect}")
-                validSolutions.append(solution)
-
-        if len(validSolutions) <= 0:
-            print("Found no solutions for this collision!")
-            return
-        elif len(validSolutions) > 1:
-            print("Found multiple valid solutions for this collision!")
-
-        # apply the first (and hopefully only) solution
-        print(f"validSolution: {validSolutions[0]}")
-        self.posX += validSolutions[0][0]
-        self.posY += validSolutions[0][1]
-
+        #
+        # # print(f"filteredSolutions: {filteredSolutions}")
+        #
+        # validSolutions = []
+        # for solution in filteredSolutions:
+        #     resultingRect = numpy.add(
+        #         self.toRect(), ((solution[0], solution[1]), (0, 0))
+        #     )
+        #     resultingRectCenter = (
+        #         resultingRect[0][0] + resultingRect[1][0] / 2.0,
+        #         resultingRect[0][1] + resultingRect[1][1] / 2.0,
+        #     )
+        #
+        #     rectCenter = (rect[0][0] + rect[1][0] / 2.0, rect[0][1] + rect[1][1] / 2.0)
+        #
+        #     distance = numpy.abs(numpy.subtract(resultingRectCenter, rectCenter))
+        #
+        #     # print(f"distance: {distance}")
+        #     # print(f"self.length: {self.length}")
+        #
+        #     if (
+        #         round(distance[0], 8) == round((self.length + rect[1][0]) / 2.0, 8)
+        #         and round(distance[1], 8) <= round((self.length + rect[1][1]) / 2.0, 3)
+        #     ) or (
+        #         round(distance[1], 8) == round((self.length + rect[1][1]) / 2.0, 8)
+        #         and round(distance[0], 8) <= round((self.length + rect[1][0]) / 2.0, 3)
+        #     ):
+        #         print(f"solution: {solution}")
+        #         print(f"position: {self.toRect()}")
+        #         print(f"wheelTheta: {math.degrees(self.wheelTheta)}")
+        #         print(f"resultingRect: {resultingRect}")
+        #         print(f"rect: {rect}")
+        #         validSolutions.append(solution)
+        #
+        # if len(validSolutions) <= 0:
+        #     print("Found no solutions for this collision!")
+        #     return
+        # elif len(validSolutions) > 1:
+        #     print("Found multiple valid solutions for this collision!")
+        # #
+        # # apply the first (and hopefully only) solution
+        # print(f"validSolution: {validSolutions[0]}")
+        self.posX += filteredSolutions[0][0]
+        self.posY += filteredSolutions[0][1]
+        #
         self.v = 0.0
+        #
+        # # return recommended velocity multiplier
+        # return validSolutions[0][2]
 
-        # return recommended velocity multiplier
-        return validSolutions[0][2]
+        return filteredSolutions[0][2]
 
     def _physics(self, grid, fieldWidth: float, fieldHeight: float):
         nRows = len(grid)

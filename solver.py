@@ -14,6 +14,8 @@ import cProfile, pstats, io
 
 import heapq
 
+from tqdm import tqdm
+
 
 def lineLine(
     a: tuple[tuple[float, float], tuple[float, float]],
@@ -83,6 +85,7 @@ class GridInfo:
     rc: tuple[int, int]
     solver: "Solver"
     valid: bool = True
+    _priority: int | None = None
 
     def __eq__(self, other):
         return (
@@ -95,17 +98,20 @@ class GridInfo:
         )
 
     def priority(self):
+        if self._priority != None:
+            return self._priority
+
         cnbrTraveledNeighbors = self.solver._validCellNeighbors(
             self.rc[0], self.rc[1], traveled=True
         )
-        # if len(cnbrTraveledNeighbors) == 0:
-        #     return 1000
 
         priorityFn = np.vectorize(lambda val: val.distanceTo(self) + val.distMag())
 
-        return int(1000 * np.min(priorityFn(cnbrTraveledNeighbors))) - len(
+        self._priority =  int(1000 * np.min(priorityFn(cnbrTraveledNeighbors))) - len(
             cnbrTraveledNeighbors
         )
+
+        return self._priority
 
     def __lt__(self, other):
         return self.priority() < other.priority()
@@ -210,36 +216,36 @@ class Solver:
 
                 if includeObstacles != self.dataGrid[row][col].isObstacle:
 
-                    if np.array_equal((row, col), [36, 108]) and np.array_equal(
-                        (parentRow, parentCol), [35, 108]
-                    ):
-                        print("bad actor failed at obs")
+                    # if np.array_equal((row, col), [36, 108]) and np.array_equal(
+                    #     (parentRow, parentCol), [35, 108]
+                    # ):
+                    #     print("bad actor failed at obs")
                     continue
 
                 if traveled != self.dataGrid[row][col].visited:
-                    if np.array_equal((row, col), [36, 108]) and np.array_equal(
-                        (parentRow, parentCol), [35, 108]
-                    ):
-                        print(
-                            "bad actor failed at trav",
-                            traveled,
-                            self.dataGrid[row][col].visited,
-                        )
+                    # if np.array_equal((row, col), [36, 108]) and np.array_equal(
+                    #     (parentRow, parentCol), [35, 108]
+                    # ):
+                    # print(
+                    #     "bad actor failed at trav",
+                    #     traveled,
+                    #     self.dataGrid[row][col].visited,
+                    # )
                     continue
 
                 if not self.dataGrid[row][col].valid:
-                    if np.array_equal((row, col), [36, 108]) and np.array_equal(
-                        (parentRow, parentCol), [35, 108]
-                    ):
-                        print("bad actor failed at val")
+                    # if np.array_equal((row, col), [36, 108]) and np.array_equal(
+                    #     (parentRow, parentCol), [35, 108]
+                    # ):
+                    #     # print("bad actor failed at val")
                     continue
 
                 validNeighbors.append(self.dataGrid[row][col])
 
-                if np.array_equal((row, col), [36, 108]) and np.array_equal(
-                    (parentRow, parentCol), [35, 108]
-                ):
-                    print("reached bad actor parent")
+                # if np.array_equal((row, col), [36, 108]) and np.array_equal(
+                #     (parentRow, parentCol), [35, 108]
+                # ):
+                # print("reached bad actor parent")
         # print("validNeighborsLength:", len(validNeighbors))
 
         return validNeighbors
@@ -307,7 +313,7 @@ class Solver:
 
         traveledCellNeighborsBak = traveledCellNeighbors.copy()
 
-        print("preTraveledCell", traveledCellNeighbors)
+        # print("preTraveledCell", traveledCellNeighbors)
 
         traveledCellNeighbors = [
             val for val in traveledCellNeighbors if not verifyCollides(parentCell, val)
@@ -372,28 +378,29 @@ class Solver:
         # print(traveledFN(self.dataGrid))
 
         # numpy.set_printoptions(threshold=sys.maxsize)
-        print(
-            "gridState",
-            traveledFN(
-                self.dataGrid[
-                    parentCell.rc[0] - 1 : parentCell.rc[0] + 2,
-                    parentCell.rc[1] - 1 : parentCell.rc[1] + 2,
-                ]
-            ),
-        )
-        print(
-            "gridPos",
-            posFN(
-                self.dataGrid[
-                    parentCell.rc[0] - 1 : parentCell.rc[0] + 2,
-                    parentCell.rc[1] - 1 : parentCell.rc[1] + 2,
-                ]
-            ),
-        )
+        # print(
+        #     "gridState",
+        #     traveledFN(
+        #         self.dataGrid[
+        #             parentCell.rc[0] - 1 : parentCell.rc[0] + 2,
+        #             parentCell.rc[1] - 1 : parentCell.rc[1] + 2,
+        #         ]
+        #     ),
+        # )
+        # print(
+        #     "gridPos",
+        #     posFN(
+        #         self.dataGrid[
+        #             parentCell.rc[0] - 1 : parentCell.rc[0] + 2,
+        #             parentCell.rc[1] - 1 : parentCell.rc[1] + 2,
+        #         ]
+        #     ),
+        # )
 
         for cnbr in untraveledCellNeighbors:
             if np.array_equal(cnbr.rc, [35, 108]):
-                print("bad actor parent is", parentCell)
+                # print("bad actor parent is", parentCell)
+                pass
             # print(f"cnbr: {cnbr}")
             # print(f"parentTraveled: {self.dataGrid[self.endGrid[0]][self.endGrid[1]]}")
             cnbrTraveledNeighbors = self._validCellNeighbors(
@@ -405,9 +412,9 @@ class Solver:
             # if verifyCollides_fn(cnbrTraveledNeighbors).any():
             #     continue
 
-            if len(cnbrTraveledNeighbors) == 0:
-                print("no neighbors:", cnbr)
-                print("parent:", parentCell)
+            # if len(cnbrTraveledNeighbors) == 0:
+            #     print("no neighbors:", cnbr)
+            #     print("parent:", parentCell)
 
             if not (cnbr in pq):
                 heapq.heappush(pq, cnbr)
@@ -432,18 +439,45 @@ class Solver:
         self.traverseForShortestPaths(
             queue, self.dataGrid[self.endGrid[0]][self.endGrid[1]]
         )
+
+        nonObstacleFN = np.vectorize(lambda val: not val.isObstacle)
+        nNonObstacles = (nonObstacleFN(self.dataGrid) == True).sum()
+
         i = 0
+        pbar = tqdm(total=nNonObstacles, ncols=100, bar_format="")
+        prevTraveled = 0
         while len(queue) > 0:
             xk = heapq.heappop(queue)
             self.traverseForShortestPaths(queue, xk)
             i += 1
 
-            print("left:", len(queue))
-
             traveledFN = np.vectorize(lambda val: val.visited)
 
-            # print((traveledFN(self.dataGrid) == True).sum())
+            nTraveled = (traveledFN(self.dataGrid) == True).sum()
+            pbar.update(int(nTraveled - prevTraveled))
 
-            # pr.print_stats()
+            prevTraveled = nTraveled
+
+        pbar.close()
+
+        # pr.print_stats()
+        # pr.disable()
         print(f"end")
         pass
+
+    def naivePath(self, position: tuple[float, float]):
+        startGrid = self._gridFromIRL(position)
+
+        currentGrid = startGrid
+
+        waypoints = [position]
+        while not np.array_equal(currentGrid, self.endGrid):
+            currentGridItem = self.dataGrid[currentGrid[0]][currentGrid[1]]
+            nextPosition = np.add(
+                currentGridItem.position, currentGridItem.optimalDirection
+            )
+            waypoints.append(nextPosition)
+
+            currentGrid = self._gridFromIRL(nextPosition)
+
+        return waypoints
