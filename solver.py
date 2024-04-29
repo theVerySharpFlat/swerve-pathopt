@@ -16,6 +16,9 @@ import heapq
 
 from tqdm import tqdm
 
+import tensorflow as tf
+import keras
+
 
 def lineLine(
     a: tuple[tuple[float, float], tuple[float, float]],
@@ -481,3 +484,20 @@ class Solver:
             currentGrid = self._gridFromIRL(nextPosition)
 
         return waypoints
+
+    def nn(self):
+        L = 10
+        # input (sx, sy, vx, vy)
+        # output (fx, fy)
+        actor = keras.Sequential([
+            keras.layers.Dense(L, input_shape=(4,), activation=tf.nn.sigmoid),
+            keras.layers.Dense(2),
+        ])
+
+        # input (sx, sy, vx, vy)
+        # output (-deltaX, -deltaY)
+        critic = keras.Sequential([
+            keras.layers.Dense(L, input_shape=(4,), activation=tf.nn.sigmoid),
+            keras.layers.Dense(2),
+        ])
+        pass

@@ -4,3 +4,5 @@ numpy>=1.26
 imageio
 heapdict
 tqdm
+tensorflow
+keras
