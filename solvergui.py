@@ -56,7 +56,21 @@ for x in it:
     (i, j) = it.multi_index
     grid[i][j] = gridImage[i][j][3]
 
-solver = Solver(fieldWidth, fieldHeight, grid, taskStart, taskEnd)
+sim = Sim(
+    posX=initialPos[0],
+    posY=initialPos[1],
+    deltaT=timeStep,
+    mass=mass,
+    muK=muK,
+    length=length,
+    WINDOW=None,
+    maxF=maxForce,
+    grid=grid,
+    fieldWidth=fieldWidth,
+    fieldHeight=fieldHeight,
+)
+
+solver = Solver(fieldWidth, fieldHeight, grid, taskStart, taskEnd, sim)
 
 WINDOW = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
 pygame.display.set_caption("Swerve Pathopt Solver GUI!")
@@ -213,6 +227,8 @@ def main():
     global cameraZoom
     mouseDraggedPos = None
 
+    solver.nn()
+
     # imgui.create_context()
     # pygameImguiRenderer = imgui.integrations.pygame.PygameRenderer()
     # imgui.get_io().display_size = WINDOW_WIDTH, WINDOW_HEIGHT
@@ -293,14 +309,10 @@ def main():
         for neighborless in solver.neighborless:
             pygame.draw.rect(
                 WINDOW, (0, 0, 255), (irlToScreen(neighborless.position), (3, 3))
-
             )
 
-        waypoints = solver.naivePath((
-            solver.GRID_WIDTH * 59,
-            solver.GRID_HEIGHT * 13 
-        ))
-        
+        waypoints = solver.naivePath((solver.GRID_WIDTH * 59, solver.GRID_HEIGHT * 13))
+
         screenWaypoints = [irlToScreen(waypoint).tolist() for waypoint in waypoints]
 
         pygame.draw.lines(WINDOW, (0, 0, 255), False, screenWaypoints, width=2)

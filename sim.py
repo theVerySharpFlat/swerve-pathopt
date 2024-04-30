@@ -7,7 +7,7 @@ import pygame
 def collidePointRect(
     r1: tuple[tuple[float, float], tuple[float, float]],
     p: tuple[float, float],
-    inclusive: bool = True
+    inclusive: bool = True,
 ):
     r1x = round(r1[0][0], 8)
     r1y = round(r1[0][1], 8)
@@ -20,7 +20,6 @@ def collidePointRect(
         return p[0] > r1x and p[0] < r1x + r1w and p[1] > r1y and p[1] < r1y + r1h
 
 
-
 class Sim:
     def __init__(
         self,
@@ -30,7 +29,11 @@ class Sim:
         mass: float,
         muK: float,
         length: float,
+        maxF: float,
         WINDOW,
+        grid,
+        fieldWidth: float,
+        fieldHeight: float,
     ):
         self.posX = posX
         self.posY = posY
@@ -40,13 +43,19 @@ class Sim:
         self.deltaT = deltaT
         self.muK = muK
         self.length = length
+        self.maxF = maxF
         self.WINDOW = WINDOW
+        self.grid = grid
+        self.fieldWidth = fieldWidth
+        self.fieldHeight = fieldHeight
 
     def _friction(self, vel):
         return -numpy.sign(vel) * 9.81 * self.mass * self.muK
 
     def _forceSim(self, F: float, tMax: float) -> float:
         """Returns total time took for this iteration"""
+
+        F = numpy.sign(F) * numpy.clip(numpy.abs(F), 0.0, abs(self.maxF))
 
         Ff = self._friction(self.v)
         if self.v == 0:
@@ -129,9 +138,13 @@ class Sim:
         for sol in solutions:
             vx = self.v * math.cos(self.wheelTheta)
             vy = self.v * math.sin(self.wheelTheta)
-            if numpy.sign(vx) == -numpy.sign(sol[0]) and numpy.sign(vy) == -numpy.sign(
-                sol[1]
-            ) and collidePointRect(rect, numpy.add((self.posX, self.posY), sol[0:2]).tolist()):
+            if (
+                numpy.sign(vx) == -numpy.sign(sol[0])
+                and numpy.sign(vy) == -numpy.sign(sol[1])
+                and collidePointRect(
+                    rect, numpy.add((self.posX, self.posY), sol[0:2]).tolist()
+                )
+            ):
                 filteredSolutions.append(sol)
         #
         # # print(f"filteredSolutions: {filteredSolutions}")
@@ -230,7 +243,7 @@ class Sim:
         # # #
         # self.v = numpy.sqrt(vx ** 2 + vy ** 2)
 
-    def step(self, F: float, theta: float, grid, fieldWidth: float, fieldHeight: float):
+    def step(self, F: float, theta: float):
 
         self.v = self.v * numpy.cos(numpy.subtract(theta, self.wheelTheta))
         self.wheelTheta = theta
@@ -238,7 +251,7 @@ class Sim:
         time = 0
         while time < self.deltaT:
             time += self._forceSim(F, self.deltaT - time)
-            self._physics(grid, fieldWidth, fieldHeight)
+            self._physics(self.grid, self.fieldWidth, self.fieldHeight)
             # print(f"fielddim: {fieldWidth}, {fieldHeight}")
 
         # Ff = -numpy.sign(self.v) * self.muK * 9.81 * self.mass # very simplistic model for friction, might need to change, IDK

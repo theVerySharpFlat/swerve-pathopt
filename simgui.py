@@ -43,6 +43,15 @@ WINDOW_HEIGHT = 450
 WINDOW = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
 pygame.display.set_caption("Swerve Pathopt GUI!")
 
+gridImage = imageio.v2.imread(fieldInfo["gridImage"])
+print(gridImage.shape[0:2])
+
+grid = numpy.zeros(shape=gridImage.shape[0:2], dtype=bool)
+it = numpy.nditer(grid, flags=["multi_index"])
+for x in it:
+    (i, j) = it.multi_index
+    grid[i][j] = gridImage[i][j][3]
+
 sim = Sim(
     posX=initialPos[0],
     posY=initialPos[1],
@@ -51,6 +60,10 @@ sim = Sim(
     muK=muK,
     length=length,
     WINDOW=WINDOW,
+    maxF=maxForce,
+    grid=grid,
+    fieldWidth=fieldWidth,
+    fieldHeight=fieldHeight,
 )
 
 # cameraZoomBounds = (0.1, 10)
@@ -190,15 +203,6 @@ def main():
 
     segments: list[list[tuple[float, float]]] = [[toScreenCoord((sim.posX, sim.posY))]]
 
-    gridImage = imageio.v2.imread(fieldInfo["gridImage"])
-    print(gridImage.shape[0:2])
-
-    grid = numpy.zeros(shape=gridImage.shape[0:2], dtype=bool)
-    it = numpy.nditer(grid, flags=["multi_index"])
-    for x in it:
-        (i, j) = it.multi_index
-        grid[i][j] = gridImage[i][j][3]
-
     tick = 0
     stepIndex = 0
 
@@ -295,9 +299,6 @@ def main():
             sim.step(
                 path["steps"][stepIndex]["force"],
                 math.radians(path["steps"][stepIndex]["theta"]),
-                grid,
-                fieldWidth,
-                fieldHeight,
             )
 
         segments[-1].append(toScreenCoord((sim.posX, sim.posY)))

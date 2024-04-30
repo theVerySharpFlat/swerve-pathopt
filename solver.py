@@ -1,5 +1,5 @@
 from math import nan
-from os import posix_spawn
+from os import name, posix_spawn
 import sys
 import numpy as np
 from numpy import Infinity, NaN, subtract, typing as npt
@@ -14,10 +14,41 @@ import cProfile, pstats, io
 
 import heapq
 
+from tensorflow.python.framework.tensor import Tensor
 from tqdm import tqdm
 
 import tensorflow as tf
 import keras
+
+import sim
+
+
+class OUActionNoise:
+    def __init__(self, mean, std_deviation, theta=0.15, dt=1e-2, x_initial=None):
+        self.theta = theta
+        self.mean = mean
+        self.std_dev = std_deviation
+        self.dt = dt
+        self.x_initial = x_initial
+        self.reset()
+
+    def __call__(self):
+        # Formula taken from https://www.wikipedia.org/wiki/Ornstein-Uhlenbeck_process
+        x = (
+            self.x_prev
+            + self.theta * (self.mean - self.x_prev) * self.dt
+            + self.std_dev * np.sqrt(self.dt) * np.random.normal(size=self.mean.shape)
+        )
+        # Store x into x_prev
+        # Makes next noise dependent on current one
+        self.x_prev = x
+        return x
+
+    def reset(self):
+        if self.x_initial is not None:
+            self.x_prev = self.x_initial
+        else:
+            self.x_prev = np.zeros_like(self.mean)
 
 
 def lineLine(
@@ -110,7 +141,7 @@ class GridInfo:
 
         priorityFn = np.vectorize(lambda val: val.distanceTo(self) + val.distMag())
 
-        self._priority =  int(1000 * np.min(priorityFn(cnbrTraveledNeighbors))) - len(
+        self._priority = int(1000 * np.min(priorityFn(cnbrTraveledNeighbors))) - len(
             cnbrTraveledNeighbors
         )
 
@@ -142,6 +173,20 @@ class GridInfo:
 
 
 class Solver:
+    bufferCapacity = 100000
+    batchSize = 64
+
+    @dataclass
+    class Observation:
+        s: tuple[float, float, float, float] = tuple(
+            np.zeros((4,)).tolist()
+        )  # state = position, velocity
+        a: tuple[float, float] = tuple(np.zeros(2).tolist())  # action = force
+        r: float = 0.0  # reward = -distance
+        sp: tuple[float, float, float, float] = tuple(
+            np.zeros(4).tolist()
+        )  # next state = next position, velocity
+
     def __init__(
         self,
         fieldWidth: float,
@@ -149,6 +194,7 @@ class Solver:
         grid: np.ndarray,
         start: tuple[float, float],
         end: tuple[float, float],
+        sim: sim.Sim,
     ):
         self.dataGrid = np.zeros(grid.shape, dtype=GridInfo)
         it = np.nditer(grid, flags=["multi_index"])
@@ -177,18 +223,37 @@ class Solver:
                 self,
             )
 
-            self.fieldWidth = fieldWidth
-            self.fieldHeight = fieldHeight
+        self.fieldWidth = fieldWidth
+        self.fieldHeight = fieldHeight
 
-            self.start = start
-            self.startGrid = self._gridFromIRL(start)
+        self.start = start
+        self.startGrid = self._gridFromIRL(start)
 
-            self.end = end
-            self.endGrid = self._gridFromIRL(end)
+        self.end = end
+        self.endGrid = self._gridFromIRL(end)
 
-            self.neighborless = []
+        self.neighborless = []
+        self.sim = sim
 
         self.initializeShortestPaths()
+
+        self.state_buffer = np.zeros((self.bufferCapacity, len(self.Observation().s)))
+        self.action_buffer = np.zeros((self.bufferCapacity, len(self.Observation().a)))
+        self.reward_buffer = np.zeros((self.bufferCapacity, 1))
+        self.next_state_buffer = np.zeros(
+            (self.bufferCapacity, len(self.Observation().sp))
+        )
+        self.observationCounter = 0
+
+    def registerObservation(self, o: Observation):
+        i = self.observationCounter % self.bufferCapacity
+
+        self.state_buffer[i] = o.s
+        self.action_buffer[i] = o.a
+        self.reward_buffer[i] = o.r
+        self.next_state_buffer[i] = o.sp
+
+        self.observationCounter += 1
 
     def _gridFromIRL(self, pos: tuple[float, float]) -> tuple[int, int]:
         GRID_WIDTH = self.fieldWidth / self.dataGrid.shape[1]
@@ -485,31 +550,262 @@ class Solver:
 
         return waypoints
 
-    def nn(self):
+    def createCritic(self):
         L = 10
         # input (sx, sy, vx, vy)
+        # output (-deltaX, -deltaY)
+        # return keras.Sequential([
+        #     keras.layers.Dense(L, input_shape=(4,), activation=tf.nn.sigmoid),
+        #     keras.layers.Dense(2),
+        # ])
+
+        inputs = keras.layers.Input(
+            shape=(len(self.Observation().s) + len(self.Observation().a),)
+        )
+        hidden = keras.layers.Dense(L, activation="sigmoid", name="hidden2")(inputs)
+        outputs = keras.layers.Dense(2, name="out")(hidden) * self.sim.maxF
+
+        return keras.Model(inputs, outputs)
+
+    def createActor(self):
+        L = 10
+
+        # input (sx, sy, vx, vy)
         # output (fx, fy)
-        actor = keras.Sequential([
-            keras.layers.Dense(L, input_shape=(4,), activation=tf.nn.sigmoid),
-            keras.layers.Dense(2),
-        ])
+        # return keras.Sequential(
+        #     [
+        #         keras.layers.Dense(
+        #             L, input_shape=(len(self.Observation().s) + len(self.Observation().a),), activation=tf.nn.sigmoid
+        #         ),
+        #         keras.layers.Dense(2),
+        #     ]
+        # )
 
-        # input (sx, sy, vx, vy)
-        # output (-deltaX, -deltaY)
-        critic = keras.Sequential([
-            keras.layers.Dense(L, input_shape=(4,), activation=tf.nn.sigmoid),
-            keras.layers.Dense(2),
-        ])
+        inputs = keras.layers.Input(shape=(len(self.Observation().s),))
+        hidden = keras.layers.Dense(L, activation="sigmoid", name="hidden")(inputs)
+        outputs = keras.layers.Dense(2, name="out")(hidden) * self.sim.maxF
 
-        targetActor = keras.Sequential([
-            keras.layers.Dense(L, input_shape=(4,), activation=tf.nn.sigmoid),
-            keras.layers.Dense(2),
-        ])
+        return keras.Model(inputs, outputs)
 
-        # input (sx, sy, vx, vy)
-        # output (-deltaX, -deltaY)
-        targetCritic = keras.Sequential([
-            keras.layers.Dense(L, input_shape=(4,), activation=tf.nn.sigmoid),
-            keras.layers.Dense(2),
-        ])
-        pass
+    gamma = 0.99
+    tau = 0.05
+
+    critic_lr = 0.002
+    actor_lr = 0.001
+
+    @tf.function
+    def update(self, state, action, reward, next_state):
+        with tf.GradientTape() as tape:
+            next_target_action = self.target_actor(next_state, training=True)
+            y = reward + self.gamma * self.target_critic(
+                np.concatenate(next_state, next_target_action), training=True
+            )
+
+            criticVal = self.critic(np.concatenate(state, action))
+            L = keras.ops.mean(keras.ops.square(y - criticVal))
+
+        gradient = tape.gradient(L, self.critic.trainable_weights)
+        self.critic_optimizer.apply(zip(gradient, self.critic.trainable_weights))
+
+        with tf.GradientTape() as tape:
+            criticVal = self.critic(np.concatenate(state, action))
+            L = keras.ops.mean(criticVal)
+
+        gradient = tape.gradient(L, self.actor.trainable_weights)
+        self.critic_optimizer.apply(zip(gradient, self.actor.trainable_weights))
+
+    def elmWeightInitialization(self, model: keras.Model, XTrain, yTrain, nHidden):
+        nInput = XTrain.shape[1]
+        inputWeights = np.random.normal(size=[nInput, nHidden])
+        biases = np.random.normal(size=[nHidden])
+
+        def sigmoid(X):
+            return 1 / (1 + np.exp(-X))
+
+        def hiddenNodes(X):
+            G = np.dot(X, inputWeights)
+            G = G + biases
+            H = sigmoid(G)
+
+            return H
+
+        outputWeights = np.dot(numpy.linalg.pinv(hiddenNodes(XTrain)), yTrain)
+
+        print("dim", outputWeights.shape)
+
+        model.layers[1].set_weights(inputWeights.transpose())
+        model.layers[2].set_weights(outputWeights.transpose())
+
+    def generateActorELMData(self):
+        X = []
+        y = []
+
+        # it = np.nditer(self.dataGrid, flags=["multi_index"])
+        for r in range(self.dataGrid.shape[0]):
+            for c in range(self.dataGrid.shape[1]):
+                grid: GridInfo = self.dataGrid[r][c]
+
+                if grid.isObstacle:
+                    continue
+
+                X.append(
+                    np.array([
+                        grid.position[0],
+                        grid.position[1],
+                        np.random.random() * 4.0 - 2.0,
+                        np.random.random() * 4.0 - 2.0,
+                    ])
+                )
+
+                y.append(
+                    np.multiply(
+                        np.divide(
+                            grid.optimalDirection, np.linalg.norm(grid.optimalDirection)
+                        ),
+                        self.sim.maxF,
+                    ).tolist()
+                )
+
+        return (np.array(X), np.array(y))
+
+    def generateCriticELMData(self):
+        X = []
+        y = []
+
+        for r in range(self.dataGrid.shape[0]):
+            for c in range(self.dataGrid.shape[1]):
+                grid: GridInfo = self.dataGrid[r][c]
+
+                if grid.isObstacle:
+                    continue
+
+                X.append(
+                    np.array([
+                        grid.position[0],
+                        grid.position[1],
+                        numpy.sign(grid.optimalDirection[0]) * np.random.random() * 2.0,
+                        numpy.sign(grid.optimalDirection[1]) * np.random.random() * 2.0,
+                    ])
+                )
+
+                y.append(-grid.shortestDist)
+
+        return (np.array(X), np.array(y))
+
+    def updateTarget(self, targetModel: keras.Model, model: keras.Model, tau: float):
+        targetWeights = targetModel.get_weights()
+        weights = model.get_weights()
+
+        for i in range(len(targetWeights)):
+            targetWeights[i] = targetWeights[i] * (1.0 - tau) + weights[i] * tau
+
+    def learn(self):
+        recordRange = min(self.observationCounter, self.bufferCapacity)
+
+        batchIndices = np.random.choice(recordRange, self.batchSize)
+
+        stateBatch = keras.ops.convert_to_tensor(self.state_buffer[batchIndices])
+        actionBatch = keras.ops.convert_to_tensor(self.action_buffer[batchIndices])
+        rewardBatch = keras.ops.convert_to_tensor(self.reward_buffer[batchIndices])
+        nextStateBatch = keras.ops.convert_to_tensor(
+            self.next_state_buffer[batchIndices]
+        )
+
+        self.update(stateBatch, actionBatch, rewardBatch, nextStateBatch)
+
+    def policy(self, state, noise):
+        action = keras.ops.squeeze(self.actor(state)).numpy() + noise
+
+        magActual = np.linalg.norm(action)
+
+        magNew = np.clip(magActual, 0.0, self.sim.maxF)
+
+        return (action / magActual) * magNew
+
+    def reward(self, state, previousState):
+        return -np.linalg.norm(
+            np.subtract(
+                (state.posX, state.posY), (previousState.posX, previousState.posY)
+            )
+        )
+
+    def nn(self):
+        self.critic = self.createCritic()
+        self.actor = self.createActor()
+
+        for layer in self.critic.layers:
+            print(layer.get_weights())
+
+        self.target_critic = self.createCritic()
+        self.target_actor = self.createActor()
+
+        (actorX, actory) = self.generateActorELMData()
+        (criticX, criticy) = self.generateCriticELMData()
+
+        self.elmWeightInitialization(self.critic, criticX, criticy, 10)
+        self.elmWeightInitialization(self.target_critic, criticX, criticy, 10)
+
+        self.elmWeightInitialization(self.actor, actorX, actory, 10)
+        self.elmWeightInitialization(self.target_actor, actorX, actory, 10)
+
+        self.critic_optimizer = keras.optimizers.Adam(self.critic_lr)
+        self.actor_optimizer = keras.optimizers.Adam(self.actor_lr)
+
+        ouNoise = OUActionNoise(mean=np.zeros(1), std_deviation=float(0.2) * np.ones(1))
+        totalEpisodes = 1
+        for ep in range(totalEpisodes):
+            previousState = (
+                self.sim.posX,
+                self.sim.posY,
+                self.sim.v * np.cos(self.sim.wheelTheta),
+                self.sim.v * np.sin(self.sim.wheelTheta),
+            )
+            episodicReward = 0
+
+            endGridCenter = (
+                self.endGrid[1] * self.GRID_WIDTH + self.GRID_WIDTH / 2.0,
+                self.endGrid[0] * self.GRID_HEIGHT + self.GRID_HEIGHT / 2.0,
+            )
+
+            # max 1000 iters
+            for it in range(1000):
+                # make it two dimentional
+                tfPrevState = keras.ops.expand_dims(
+                    keras.ops.convert_to_tensor(previousState), 0
+                )
+
+                action = self.policy(tfPrevState, ouNoise())
+
+                self.sim.step(
+                    float(np.linalg.norm((action[0], action[1]))),
+                    float(np.arctan2(action[1], action[0])),
+                )
+
+                state = (
+                    self.sim.posX,
+                    self.sim.posY,
+                    float(self.sim.v * np.cos(self.sim.wheelTheta)),
+                    float(self.sim.v * np.sin(self.sim.wheelTheta)),
+                )
+                reward = self.reward(state, previousState)
+
+                done = (
+                    self.sim.posX == endGridCenter[0]
+                    and self.sim.posY == endGridCenter[1]
+                )
+
+                self.registerObservation(
+                    self.Observation(previousState, action, float(reward), state)
+                )
+
+                episodicReward += reward
+
+                self.learn()
+
+                self.updateTarget(self.target_actor, self.actor, self.tau)
+                self.updateTarget(self.target_critic, self.actor, self.tau)
+
+                if done:
+                    break
+
+                previousState = state
