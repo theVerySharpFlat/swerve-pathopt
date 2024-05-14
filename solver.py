@@ -559,11 +559,13 @@ class Solver:
         #     keras.layers.Dense(2),
         # ])
 
+        print("input length:",len(self.Observation().s) + len(self.Observation().a), )
+
         inputs = keras.layers.Input(
             shape=(len(self.Observation().s) + len(self.Observation().a),)
         )
         hidden = keras.layers.Dense(L, activation="sigmoid", name="hidden2")(inputs)
-        outputs = keras.layers.Dense(2, name="out")(hidden) * self.sim.maxF
+        outputs = keras.layers.Dense(1, name="out")(hidden) * self.sim.maxF
 
         return keras.Model(inputs, outputs)
 
@@ -631,10 +633,22 @@ class Solver:
 
         outputWeights = np.dot(numpy.linalg.pinv(hiddenNodes(XTrain)), yTrain)
 
+        print("inputweights", np.random.normal(size=[nInput, nHidden]).shape)
+        print("hiddennodedim", numpy.linalg.pinv(hiddenNodes(XTrain)).shape)
+        print("XDim", XTrain.shape)
+        print("YDim", yTrain.shape)
         print("dim", outputWeights.shape)
 
-        model.layers[1].set_weights(inputWeights.transpose())
-        model.layers[2].set_weights(outputWeights.transpose())
+        print(inputWeights)
+
+        # model.layers[1].set_weights(inputWeights)
+        # model.layers[2].set_weights(outputWeights)
+
+        model.set_weights([
+            [],
+            inputWeights,
+            outputWeights
+        ])
 
     def generateActorELMData(self):
         X = []
@@ -657,13 +671,17 @@ class Solver:
                     ])
                 )
 
+                if np.linalg.norm(grid.optimalDirection) == 0.0:
+                    continue
+
+
                 y.append(
                     np.multiply(
                         np.divide(
                             grid.optimalDirection, np.linalg.norm(grid.optimalDirection)
                         ),
                         self.sim.maxF,
-                    ).tolist()
+                    )
                 )
 
         return (np.array(X), np.array(y))
@@ -679,16 +697,28 @@ class Solver:
                 if grid.isObstacle:
                     continue
 
+                if np.linalg.norm(grid.optimalDirection) == 0.0:
+                    continue
+
+                maxForceDirection = np.multiply(
+                        np.divide(
+                            grid.optimalDirection, np.linalg.norm(grid.optimalDirection)
+                        ),
+                        self.sim.maxF,
+                    )
+
                 X.append(
                     np.array([
                         grid.position[0],
                         grid.position[1],
                         numpy.sign(grid.optimalDirection[0]) * np.random.random() * 2.0,
                         numpy.sign(grid.optimalDirection[1]) * np.random.random() * 2.0,
+                        maxForceDirection[0],
+                        maxForceDirection[1]
                     ])
                 )
 
-                y.append(-grid.shortestDist)
+                y.append(np.array([-grid.shortestDist]))
 
         return (np.array(X), np.array(y))
 
@@ -725,7 +755,7 @@ class Solver:
     def reward(self, state, previousState):
         return -np.linalg.norm(
             np.subtract(
-                (state.posX, state.posY), (previousState.posX, previousState.posY)
+                (state[0], state[1]), (previousState[0], previousState[1])
             )
         )
 
@@ -742,11 +772,11 @@ class Solver:
         (actorX, actory) = self.generateActorELMData()
         (criticX, criticy) = self.generateCriticELMData()
 
-        self.elmWeightInitialization(self.critic, criticX, criticy, 10)
-        self.elmWeightInitialization(self.target_critic, criticX, criticy, 10)
-
-        self.elmWeightInitialization(self.actor, actorX, actory, 10)
-        self.elmWeightInitialization(self.target_actor, actorX, actory, 10)
+        # self.elmWeightInitialization(self.critic, criticX, criticy, 10)
+        # self.elmWeightInitialization(self.target_critic, criticX, criticy, 10)
+        #
+        # self.elmWeightInitialization(self.actor, actorX, actory, 10)
+        # self.elmWeightInitialization(self.target_actor, actorX, actory, 10)
 
         self.critic_optimizer = keras.optimizers.Adam(self.critic_lr)
         self.actor_optimizer = keras.optimizers.Adam(self.actor_lr)
